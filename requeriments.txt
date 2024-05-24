@@ -2,3 +2,4 @@ apache-airflow
 requests
 pandas
 matplotlib
+holidays
