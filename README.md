@@ -8,6 +8,12 @@ Instale os requerimentos:
 make install
 ```
 
+Precisará ter o postgres instalado para rodar:
+
+```bash
+make create_db
+```
+
 Para rodar execute:
 
 ```bash
