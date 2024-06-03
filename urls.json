@@ -28,5 +28,25 @@
             "nome": "datatran2022.csv",
             "link": "https://drive.google.com/uc?export=download&id=1PRQjuV5gOn_nn6UNvaJyVURDIfbSAK4-"
         }
+    },
+    "2021": {
+        "causas": {
+            "nome": "acidentes2021_todas_causas_tipos.csv",
+            "link": "https://drive.google.com/uc?export=download&id=1Gk3U6cMOZIevsDZHLi6J503xoCRS_lnI"
+        },
+        "ocorrencia": {
+            "nome": "datatran2021.csv",
+            "link": "https://drive.google.com/uc?export=download&id=12xH8LX9aN2gObR766YN3cMcuycwyCJDz"
+        }
+    },
+    "2020": {
+        "causas": {
+            "nome": "acidentes2020_todas_causas_tipos.csv",
+            "link": "https://drive.google.com/uc?export=download&id=1yQtVOsAlupPHQVVTmbJo0NR3XMzgHANO"
+        },
+        "ocorrencia": {
+            "nome": "datatran2020.csv",
+            "link": "https://drive.google.com/uc?export=download&id=1esu6IiH5TVTxFoedv6DBGDd01Gvi8785"
+        }
     }
 }

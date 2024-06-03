@@ -73,9 +73,34 @@ def etl():
                 print("\nExiste um valor do ano que não corresponde a tabela")
         except: 
             raise Exception("Data ou horário não estão em formato padrão ou não existem!")
+        
 
-        # Retira valores de 'dia_semana' invalidos
-        df = df[df['dia_semana'].isin(['domingo', 'quarta-feira', 'quinta-feira', 'segunda-feira', 'sexta-feira', 'sábado', 'terça-feira'])]
+        # Substitui os valores null de 'ano_fabricacao_veiculo' pela mediana
+        mediana_ano = df[df['ano_fabricacao_veiculo'] != 0]['ano_fabricacao_veiculo'].median()
+        df.loc[df['ano_fabricacao_veiculo'].isnull(), 'ano_fabricacao_veiculo'] = mediana_ano
+        df.loc[df['ano_fabricacao_veiculo'] == 0, 'ano_fabricacao_veiculo'] = mediana_ano
+
+        # Valores nulos em 'br' e 'km' são substituídos por -1
+        br_km = ['br', 'km']
+        for coluna in br_km:
+            df.loc[df[coluna].isnull(), coluna] = -1
+
+        # Substitui os valores null por "não informado"
+        for coluna in df.columns:
+            df.loc[df[coluna].isnull(), coluna] = 'não informado'
+
+        valores_esperados = {'dia_semana': ['domingo', 'quarta-feira', 'quinta-feira', 'segunda-feira', 'sexta-feira', 'sábado', 'terça-feira'],
+                             'uf': ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'],
+                             'sentido_via': ['Crescente', 'Decrescente', 'Não Informado'],
+                             'tipo_pista': ['Dupla', 'Múltipla', 'Simples'],
+                             'uso_solo': ['Não', 'Sim'],
+                             'classificacao_acidente': ['Com Vítimas Fatais', 'Com Vítimas Feridas', 'Sem Vítimas'],
+                             'condicao_metereologica': ['Chuva', 'Céu Claro', 'Garoa/Chuvisco', 'Granizo', 'Ignorado', 'Neve', 'Nevoeiro/Neblina', 'Nublado', 'Sol', 'Vento']
+                             }
+        
+        # Substitui valores invalidos por "não informado"
+        for coluna, valores in valores_esperados.items():
+            df.loc[~df[coluna].isin(valores), coluna] = 'não informado'
 
         # Arruma a distribuição das fase dos dias
         df['fase_dia'] = df.apply(
@@ -86,42 +111,6 @@ def etl():
             else 'Madrugada',
             axis=1
         )
-
-        ufs = [
-            "AC",  # Acre
-            "AL",  # Alagoas
-            "AM",  # Amazonas
-            "AP",  # Amapá
-            "BA",  # Bahia
-            "CE",  # Ceará
-            "DF",  # Distrito Federal
-            "ES",  # Espírito Santo
-            "GO",  # Goiás
-            "MA",  # Maranhão
-            "MG",  # Minas Gerais
-            "MS",  # Mato Grosso do Sul
-            "MT",  # Mato Grosso
-            "PA",  # Pará
-            "PB",  # Paraíba
-            "PE",  # Pernambuco
-            "PI",  # Piauí
-            "PR",  # Paraná
-            "RJ",  # Rio de Janeiro
-            "RN",  # Rio Grande do Norte
-            "RO",  # Rondônia
-            "RR",  # Roraima
-            "RS",  # Rio Grande do Sul
-            "SC",  # Santa Catarina
-            "SE",  # Sergipe
-            "SP",  # São Paulo
-            "TO"   # Tocantins
-        ]
-
-        # Retira valores de UF invalidos
-        df = df[df['uf'].isin(ufs)]
-
-        #  Retora valores ausentes em delegacia
-        df = df.dropna(subset=['delegacia'])
 
         # Retira as linhas onde 'mortos' é maior que 'pessoas'
         df = df[df['mortos'] <= df['pessoas']]
@@ -136,18 +125,6 @@ def etl():
         # Substituindo os valores zero pela mediana
         df.loc[df['pessoas'] == 0, 'pessoas'] = mediana_pessoas
         df.loc[df['veiculos'] == 0, 'veiculos'] = mediana_veiculos
-
-        # Retira valores de 'sentido_via' invalidos
-        df = df[df['sentido_via'].isin(['Crescente', 'Decrescente', 'Não Informado'])]
-
-        # Retira valores de 'tipo_pista' invalidos
-        df = df[df['tipo_pista'].isin(['Dupla', 'Múltipla', 'Simples'])]
-
-        # Retira valores de 'uso_solo' invalidos
-        df = df[df['uso_solo'].isin(['Não', 'Sim'])]
-
-        # Retira valores de 'classificacao_acidente' invalidos
-        df = df[df['classificacao_acidente'].isin(['Com Vítimas Fatais', 'Com Vítimas Feridas', 'Sem Vítimas'])]
                 
         df.to_csv(f'dados/limpos_{arquivo[10:14]}.csv', index=False)
 
@@ -241,6 +218,10 @@ def etl():
         dim_descritivo = df[['causa_acidente', 'tipo_acidente', 'classificacao_acidente', 'condicao_metereologica']].drop_duplicates().reset_index(drop=True)
         dim_descritivo['id_descritivo'] = dim_descritivo.index + 1
 
+        # Criar dimensão veiculo protagonista
+        dim_veiculo = df[['tipo_veiculo', 'marca', 'ano_fabricacao_veiculo']].drop_duplicates().reset_index(drop=True)
+        dim_veiculo['id_veiculo'] = dim_veiculo.index + 1
+
         # Criar tabela fato
         fato_acidente = df[['pessoas', 'veiculos', 'feridos', 'mortos']].reset_index(drop=True)
         fato_acidente = df.merge(dim_tempo[['id_tempo','hora', 'dia', 'mes', 'ano', 'trimestre', 'feriado', 'dia_util', 'dia_semana', 'fase_dia']], 
@@ -259,7 +240,11 @@ def etl():
                                             on=['causa_acidente', 'tipo_acidente', 'classificacao_acidente', 'condicao_metereologica'],
                                             how='left')
         
-        fato_acidentes = fato_acidente[['id_descritivo','id_tempo', 'id_rodovia', 'id_local', 'pessoas', 'veiculos', 'feridos', 'mortos']]
+        fato_acidente = fato_acidente.merge(dim_veiculo[['id_veiculo', 'tipo_veiculo', 'marca', 'ano_fabricacao_veiculo']],
+                                            on=['tipo_veiculo', 'marca', 'ano_fabricacao_veiculo'],
+                                            how='left')
+        
+        fato_acidentes = fato_acidente[['id_veiculo','id_descritivo','id_tempo', 'id_rodovia', 'id_local', 'pessoas', 'veiculos', 'feridos', 'mortos']]
         fato_acidentes = fato_acidentes.rename(columns={'pessoas': 'pessoas_envolvidas', 'veiculos': 'veiculos_envolvidos', 'mortos': 'obitos'})
         fato_acidentes = fato_acidentes.drop_duplicates(subset=['id_descritivo','id_tempo', 'id_rodovia', 'id_local']).reset_index(drop=True)
 
@@ -285,6 +270,7 @@ def etl():
         dim_rodovia.to_csv('dados/dim_rodovia.csv', index=False)
         dim_local.to_csv('dados/dim_local.csv', index=False)
         dim_descritivo.to_csv('dados/dim_descritivo.csv', index=False)
+        dim_veiculo.to_csv('dados/dim_veiculo.csv', index=False)
 
     @task(task_id='carregar_dados')
     def carregar_dados():
@@ -317,10 +303,10 @@ def etl():
             CREATE TABLE IF NOT EXISTS Dim_Rodovia (
                 id_rodovia SERIAL PRIMARY KEY,
                 rodovia FLOAT,
-                posicao_rodovia VARCHAR(10),
+                posicao_rodovia VARCHAR(14),
                 sentido_via VARCHAR(15),
-                uso_solo VARCHAR(6),
-                tipo_pista VARCHAR(10),
+                uso_solo VARCHAR(14),
+                tipo_pista VARCHAR(14),
                 aclive BOOLEAN,
                 declive BOOLEAN,
                 curva BOOLEAN,
@@ -337,7 +323,7 @@ def etl():
                         
             CREATE TABLE IF NOT EXISTS Dim_Local (
                 id_local SERIAL PRIMARY KEY,
-                uf VARCHAR(2),
+                uf VARCHAR(14),
                 municipio VARCHAR(40),
                 delegacia VARCHAR(30),
                 latitude VARCHAR,
@@ -350,6 +336,13 @@ def etl():
                 tipo_acidente VARCHAR(40),
                 classificacao_acidente VARCHAR(30),
                 condicao_metereologica VARCHAR(30)
+            );
+                       
+            CREATE TABLE IF NOT EXISTS Dim_Veiculo (
+                id_veiculo SERIAL PRIMARY KEY,
+                tipo_veiculo VARCHAR(40),
+                marca VARCHAR(80),
+                ano_fabricacao_veiculo INT
             );
                         
             CREATE TABLE IF NOT EXISTS Fato_Acidentes (
@@ -376,6 +369,7 @@ def etl():
         dim_rodovia = pd.read_csv('dados/dim_rodovia.csv')
         dim_local = pd.read_csv('dados/dim_local.csv')
         dim_descritivo = pd.read_csv('dados/dim_descritivo.csv')
+        dim_veiculo = pd.read_csv('dados/dim_veiculo.csv')
         fato_acidentes = pd.read_csv('dados/fato_acidentes.csv')
 
         # Inserção dos dados
@@ -408,6 +402,13 @@ def etl():
                 ON CONFLICT (id_descritivo) DO NOTHING
             """, (row['id_descritivo'], row['causa_acidente'], row['tipo_acidente'], row['classificacao_acidente'], row['condicao_metereologica']))
 
+        for _, row in dim_veiculo.iterrows():
+            cursor.execute("""
+                INSERT INTO Dim_Veiculo (id_veiculo, tipo_veiculo, marca, ano_fabricacao_veiculo)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (id_veiculo) DO NOTHING
+            """, (row['id_veiculo'], row['tipo_veiculo'], row['marca'], row['ano_fabricacao_veiculo']))
+
         for _, row in fato_acidentes.iterrows():
             cursor.execute("""
                 INSERT INTO Fato_Acidentes (id_descritivo, id_tempo, id_rodovia, id_local, pessoas_envolvidas, veiculos_envolvidos, feridos, obitos)
@@ -434,25 +435,39 @@ def etl():
     download_tasks_2022_causas = download_e_extracao_zip(urls['2022']['causas'])
     download_tasks_2022_ocorrencia = download_e_extracao_zip(urls['2022']['ocorrencia'])
 
+    download_tasks_2021_causas = download_e_extracao_zip(urls['2021']['causas'])
+    download_tasks_2021_ocorrencia = download_e_extracao_zip(urls['2021']['ocorrencia'])
+
+    download_tasks_2020_causas = download_e_extracao_zip(urls['2020']['causas'])
+    download_tasks_2020_ocorrencia = download_e_extracao_zip(urls['2020']['ocorrencia'])
+
     # Tarefas de merge 
     merge_dados_task_2024 = merge_dados([urls['2024']['causas']['nome'], urls['2024']['ocorrencia']['nome']], '2024')
     merge_dados_task_2023 = merge_dados([urls['2023']['causas']['nome'], urls['2023']['ocorrencia']['nome']], '2023')
     merge_dados_task_2022 = merge_dados([urls['2022']['causas']['nome'], urls['2022']['ocorrencia']['nome']], '2022')
+    merge_dados_task_2021 = merge_dados([urls['2021']['causas']['nome'], urls['2021']['ocorrencia']['nome']], '2021')
+    merge_dados_task_2020 = merge_dados([urls['2020']['causas']['nome'], urls['2020']['ocorrencia']['nome']], '2020')
 
     # Tarefas de limpeza
     limpeza_dados_task_2024 = limpeza_dados("resultado_2024.csv")
     limpeza_dados_task_2023 = limpeza_dados("resultado_2023.csv")
     limpeza_dados_task_2022 = limpeza_dados("resultado_2022.csv")
+    limpeza_dados_task_2021 = limpeza_dados("resultado_2021.csv")
+    limpeza_dados_task_2020 = limpeza_dados("resultado_2020.csv")
 
     # Tarefas de transformação 
     transformar_dados_task_2024 = transformar_dados("limpos_2024.csv")
     transformar_dados_task_2023 = transformar_dados("limpos_2023.csv")
     transformar_dados_task_2022 = transformar_dados("limpos_2022.csv")
+    transformar_dados_task_2021 = transformar_dados("limpos_2021.csv")
+    transformar_dados_task_2020 = transformar_dados("limpos_2020.csv")
 
     # Tarefa de unir dados
     unir_dados_task = unir_dados(["transformados_e_limpos_2024.csv", 
                                   "transformados_e_limpos_2023.csv", 
-                                  "transformados_e_limpos_2022.csv"])
+                                  "transformados_e_limpos_2022.csv",
+                                  "transformados_e_limpos_2021.csv",
+                                  "transformados_e_limpos_2020.csv"])
     
     # Tarefa de criar dimensões
     criar_dimensoes_task = criar_dimensoes('dados/transformados_e_limpos_todos_anos.csv')
@@ -470,17 +485,29 @@ def etl():
     download_tasks_2022_causas >> merge_dados_task_2022
     download_tasks_2022_ocorrencia >> merge_dados_task_2022
 
+    download_tasks_2021_causas >> merge_dados_task_2021
+    download_tasks_2021_ocorrencia >> merge_dados_task_2021
+
+    download_tasks_2020_causas >> merge_dados_task_2020
+    download_tasks_2020_ocorrencia >> merge_dados_task_2020
+
     merge_dados_task_2024 >> limpeza_dados_task_2024
     merge_dados_task_2023 >> limpeza_dados_task_2023
     merge_dados_task_2022 >> limpeza_dados_task_2022
+    merge_dados_task_2021 >> limpeza_dados_task_2021
+    merge_dados_task_2020 >> limpeza_dados_task_2020
 
     limpeza_dados_task_2024 >> transformar_dados_task_2024
     limpeza_dados_task_2023 >> transformar_dados_task_2023
     limpeza_dados_task_2022 >> transformar_dados_task_2022
+    limpeza_dados_task_2021 >> transformar_dados_task_2021
+    limpeza_dados_task_2020 >> transformar_dados_task_2020
 
     transformar_dados_task_2024 >> unir_dados_task
     transformar_dados_task_2023 >> unir_dados_task
     transformar_dados_task_2022 >> unir_dados_task
+    transformar_dados_task_2021 >> unir_dados_task
+    transformar_dados_task_2020 >> unir_dados_task
 
     unir_dados_task >> criar_dimensoes_task
 
