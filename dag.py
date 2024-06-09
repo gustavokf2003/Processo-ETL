@@ -86,7 +86,7 @@ def etl():
             df.loc[df[coluna].isnull(), coluna] = -1
 
         # Substitui os valores null por "não informado"
-        for coluna in df.columns:
+        for coluna in [col for col in df.columns if col != 'marca']:
             df.loc[df[coluna].isnull(), coluna] = 'não informado'
 
         valores_esperados = {'dia_semana': ['domingo', 'quarta-feira', 'quinta-feira', 'segunda-feira', 'sexta-feira', 'sábado', 'terça-feira'],
@@ -110,7 +110,7 @@ def etl():
             else 'Noite' if 18 <= row['horario'].hour < 24
             else 'Madrugada',
             axis=1
-        )
+        )   
 
         # Retira as linhas onde 'mortos' é maior que 'pessoas'
         df = df[df['mortos'] <= df['pessoas']]
@@ -162,7 +162,7 @@ def etl():
         df['dia_util'] = df.apply(lambda row: False if row['dia_semana'] in ['sábado', 'domingo'] else True, axis=1)
 
         # Derivando novas colunas da dimensão rodovia
-        df['uso_solo'] = df['uso_solo'].replace({'Rural': 'Não', 'Urbano': 'Sim'})
+        df['uso_solo'] = df['uso_solo'].replace({'Não': 'Rural', 'Sim': 'Urbano'})
 
         tipos_de_via_lista = ['Aclive', 'Declive', 'Curva', 'Em Obras', 'Viaduto', 'Reta', 'Ponte', 'Rotatória', 'Interseção de Vias', 'Desvio Temporário', 'Retorno Regulamentado', 'Túnel']
         tipos_via = {tipo: [] for tipo in tipos_de_via_lista}
@@ -180,8 +180,22 @@ def etl():
         for coluna, linhas in tipos_via.items():
             df[f'{coluna}'] = linhas
 
+        # Criação da coluna lat_log
+        df['lat_log'] = df['latitude'].str.replace(',', '.') + ',' + df['longitude'].str.replace(',', '.')
+
+        # Criação da coluna de marca e modelo
+        df['modelo'] = df['marca'].str.split('/').str[1]
+        df.loc[df['marca'].str.split('/').str[0] == 'I', 'modelo'] = df.loc[df['marca'].str.split('/').str[0] == 'I', 'modelo'].str.split(' ').str[1:].apply(lambda row:' '.join(row))
+        df['nova_marca'] = df['marca'].str.split('/').str[0]
+        df.loc[df['nova_marca'].str[0] == 'I', 'nova_marca'] =  df.loc[df['nova_marca'].str[0] == 'I', 'marca'].str.split('/').str[1].str.split(' ').str[0]
+        df['marca'] = df['nova_marca']
+
+        # Preencher valores ausentes
+        df.loc[df['modelo'].isnull(), 'modelo'] = 'não informado'
+        df.loc[df['marca'].isnull(), 'marca'] = 'não informado'
+
         # Tirar colunas que não serão utilizadas
-        df = df.drop(columns=['data_inversa', 'horario', 'tracado_via'])
+        df = df.drop(columns=['data_inversa', 'horario', 'tracado_via', 'latitude', 'longitude', 'nova_marca', 'id'])
 
         df.to_csv(f'dados/transformados_e_limpos_{arquivo[7:11]}.csv', index=False)
 
@@ -211,7 +225,7 @@ def etl():
         dim_rodovia['id_rodovia'] = dim_rodovia.index + 1
 
         # Criar dimensão local
-        dim_local = df[['uf', 'municipio', 'delegacia', 'latitude', 'longitude']].drop_duplicates().reset_index(drop=True)
+        dim_local = df[['uf', 'municipio', 'delegacia', 'lat_log']].drop_duplicates().reset_index(drop=True)
         dim_local['id_local'] = dim_local.index + 1
 
         # Criar dimensão descritivo 
@@ -219,7 +233,7 @@ def etl():
         dim_descritivo['id_descritivo'] = dim_descritivo.index + 1
 
         # Criar dimensão veiculo protagonista
-        dim_veiculo = df[['tipo_veiculo', 'marca', 'ano_fabricacao_veiculo']].drop_duplicates().reset_index(drop=True)
+        dim_veiculo = df[['tipo_veiculo', 'marca', 'modelo', 'ano_fabricacao_veiculo']].drop_duplicates().reset_index(drop=True)
         dim_veiculo['id_veiculo'] = dim_veiculo.index + 1
 
         # Criar tabela fato
@@ -232,16 +246,16 @@ def etl():
                                             on=['br', 'km', 'sentido_via', 'uso_solo', 'tipo_pista', 'Aclive', 'Declive', 'Curva', 'Em Obras', 'Viaduto', 'Reta', 'Ponte', 'Rotatória', 'Interseção de Vias', 'Desvio Temporário', 'Retorno Regulamentado', 'Túnel'],
                                             how='left')
         
-        fato_acidente = fato_acidente.merge(dim_local[['id_local', 'uf', 'municipio', 'delegacia', 'latitude', 'longitude']],
-                                            on=['uf', 'municipio', 'delegacia', 'latitude', 'longitude'],
+        fato_acidente = fato_acidente.merge(dim_local[['id_local', 'uf', 'municipio', 'delegacia', 'lat_log']],
+                                            on=['uf', 'municipio', 'delegacia', 'lat_log'],
                                             how='left')
         
         fato_acidente = fato_acidente.merge(dim_descritivo[['id_descritivo', 'causa_acidente', 'tipo_acidente', 'classificacao_acidente', 'condicao_metereologica']],
                                             on=['causa_acidente', 'tipo_acidente', 'classificacao_acidente', 'condicao_metereologica'],
                                             how='left')
         
-        fato_acidente = fato_acidente.merge(dim_veiculo[['id_veiculo', 'tipo_veiculo', 'marca', 'ano_fabricacao_veiculo']],
-                                            on=['tipo_veiculo', 'marca', 'ano_fabricacao_veiculo'],
+        fato_acidente = fato_acidente.merge(dim_veiculo[['id_veiculo', 'tipo_veiculo', 'marca', 'modelo', 'ano_fabricacao_veiculo']],
+                                            on=['tipo_veiculo', 'marca', 'modelo', 'ano_fabricacao_veiculo'],
                                             how='left')
         
         fato_acidentes = fato_acidente[['id_veiculo','id_descritivo','id_tempo', 'id_rodovia', 'id_local', 'pessoas', 'veiculos', 'feridos', 'mortos']]
@@ -286,6 +300,16 @@ def etl():
 
         # Criação das tabelas
         cursor = conn.cursor()
+
+        cursor.execute("""
+            DROP TABLE IF EXISTS Fato_Acidentes;
+            DROP TABLE IF EXISTS Dim_Veiculo;
+            DROP TABLE IF EXISTS Dim_Tempo;
+            DROP TABLE IF EXISTS Dim_Rodovia;
+            DROP TABLE IF EXISTS Dim_Descritivo;
+            DROP TABLE IF EXISTS Dim_Local;
+        """)
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS Dim_Tempo (
                 id_tempo SERIAL PRIMARY KEY,
@@ -326,8 +350,7 @@ def etl():
                 uf VARCHAR(14),
                 municipio VARCHAR(40),
                 delegacia VARCHAR(30),
-                latitude VARCHAR,
-                longitude VARCHAR
+                lat_log  VARCHAR
             );
                     
             CREATE TABLE IF NOT EXISTS Dim_Descritivo (
@@ -341,7 +364,8 @@ def etl():
             CREATE TABLE IF NOT EXISTS Dim_Veiculo (
                 id_veiculo SERIAL PRIMARY KEY,
                 tipo_veiculo VARCHAR(40),
-                marca VARCHAR(80),
+                marca VARCHAR(40),
+                modelo VARCHAR(60),
                 ano_fabricacao_veiculo INT
             );
                         
@@ -390,10 +414,10 @@ def etl():
 
         for _, row in dim_local.iterrows():
             cursor.execute("""
-                INSERT INTO Dim_Local (id_local, uf, municipio, delegacia, latitude, longitude)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO Dim_Local (id_local, uf, municipio, delegacia, lat_log)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (id_local) DO NOTHING
-            """, (row['id_local'], row['uf'], row['municipio'], row['delegacia'], row['latitude'], row['longitude']))
+            """, (row['id_local'], row['uf'], row['municipio'], row['delegacia'], row['lat_log']))
 
         for _, row in dim_descritivo.iterrows():
             cursor.execute("""
@@ -404,10 +428,10 @@ def etl():
 
         for _, row in dim_veiculo.iterrows():
             cursor.execute("""
-                INSERT INTO Dim_Veiculo (id_veiculo, tipo_veiculo, marca, ano_fabricacao_veiculo)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO Dim_Veiculo (id_veiculo, tipo_veiculo, marca, modelo, ano_fabricacao_veiculo)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (id_veiculo) DO NOTHING
-            """, (row['id_veiculo'], row['tipo_veiculo'], row['marca'], row['ano_fabricacao_veiculo']))
+            """, (row['id_veiculo'], row['tipo_veiculo'], row['marca'], row['modelo'], row['ano_fabricacao_veiculo']))
 
         for _, row in fato_acidentes.iterrows():
             cursor.execute("""
