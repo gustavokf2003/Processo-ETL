@@ -1,3 +1,7 @@
+## Link do dashboard criado usando os dados transofrmados
+
+https://lookerstudio.google.com/reporting/f6ad3135-4f05-476d-ab37-a32565ce0734/page/p_39ldqd44hd
+
 ## PROJETO DE ETL COM AIRFLOW
 
 # Tutorial para rodar
